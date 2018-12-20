@@ -1,0 +1,16 @@
+* ftdb
+** images not cacheable
+Cache-Control: no-store, no-cache, must-revalidate
+** no CORS headers
+*** kitinventory needs to proxy
+*** errors on ftdb page:
+https://ft-datenbank.de/ticket/3408
+Content Security Policy: The page’s settings blocked the loading of a resource at inline (“script-src”).
+** search relevance
+*** 516185
+Profi Pneumatic 3 ist nur 4. Ergebnis
+** db komplett?
+533874 Profi Pneumatic Power ist nur als Anleitung vorhanden
+** Color is only in the title
+*** Any chance to get color as attribute?
+*** Any chance to resolve variant uuid?

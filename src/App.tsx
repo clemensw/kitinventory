@@ -1,28 +1,284 @@
-import React, { Component } from 'react';
-import logo from './logo.svg';
-import './App.css';
+import React, { Component, useState, useEffect } from 'react'
+import logo from './logo.svg'
+import './App.css'
+import { string, number } from 'prop-types'
+import axios from 'axios'
+import { Form, Input, Button, Grid } from 'semantic-ui-react'
+import 'semantic-ui-css/semantic.min.css'
+
+
+type SystemSummary = {
+  pieces_total: number,
+  piece_types: number,
+  kits_total: number,
+}
+
+type InventorySummary = {
+  [system_name: string]: SystemSummary
+}
+
+type Kit = {
+  id: number,
+  part_no: string,
+  name: string,
+  image: string,
+  uri: string
+}
+
+type Part = {
+  id: number,
+  part_no: string,
+  variant_id: string,
+  name: string,
+  count: number,
+  category: string,
+  category_name: string,
+  image: string
+}
+
+type FtTicket = {
+  ticket_id: number,
+  ft_article_nos: string,
+  ft_variant_uuid: string,
+  title: string,
+  ft_count: number,
+  ft_cat_all: string,
+  ft_cat_all_formatted: string,
+  ft_icon: string
+  
+}
+
 
 class App extends Component {
+  state = {
+    summary: {
+      fischertechnik: {
+        pieces_total: 0,
+        piece_types: 0,
+        kits_total: 0,
+      }
+    }
+  }
   render() {
     return (
       <div className="App">
-        <header className="App-header">
-          <img src={logo} className="App-logo" alt="logo" />
-          <p>
-            Edit <code>src/App.tsx</code> and save to reload.
-          </p>
-          <a
-            className="App-link"
-            href="https://reactjs.org"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Learn React
-          </a>
-        </header>
+        <Summary summary={this.state.summary} />
+        <ul>
+          <li>
+            <NavButton name="add" />
+          </li>
+          <li>
+            <NavButton name="inventory" />
+          </li>
+          <li>
+            <NavButton name="Remove"></NavButton>
+          </li>
+        </ul>
+        <AddForm />
       </div>
     );
   }
+}
+
+function AddForm() {
+  const [selectedKit, setSelectedKit] = useState<Kit | null>(null)
+  let activity
+  if (selectedKit) {
+    activity = <PartsSelector kit_id={selectedKit.id} />
+  } else {
+    activity = <KitSelector action={setSelectedKit} />
+  }
+  return (
+    <div>
+      <SystemSelector />
+      <AcquisitionForm kit={selectedKit} />
+      {activity}
+    </div>
+  )
+}
+
+function AcquisitionForm(props: {kit: Kit | null}) {
+  return (
+    <Grid stackable columns={2} >
+    <Grid.Column>
+    <Form action="Submit">
+      <Form.Group>
+        <Form.Input label="Acquired on" placeholder="Date" />
+        <Form.Input label="Acquired from" placeholder="Name" />
+        <Form.Select label="Type of Acquisition" placeholder="purchase?" options={[
+          {key: "purchase", value: "purchase", text:"purchase"},
+          {key:"gift", value:"gift", text: "gift"}]} />
+        <Form.Select label="Condition" placeholder="Condition" options={[
+          {key: "new", value:"new", text: "new"}, {key: "used", value: "used", text: "used"}]} />
+      </Form.Group>
+      <Form.Group>
+        <Form.Input label="Name of Kit" value={props.kit && props.kit.name} />
+        <Form.Input label="Part Number" value={props.kit && props.kit.part_no} />
+        <Form.Input label="Proof of Purchase" placeholder="Code" />
+        <Form.Button label="Add" content="Add Kit" active={false} disabled={true} />
+      </Form.Group>
+    </Form>
+    </Grid.Column>
+    <Grid.Column>
+      <img src={props.kit && props.kit.image || ""} /> {props.kit && props.kit.part_no} {props.kit && props.kit.name}
+    </Grid.Column>
+    </Grid>
+  )
+}
+
+function PartsSelector(props: { kit_id: number }) {
+  const [parts, setParts] = useState<Part[]>([])
+  useEffect(() => {
+    console.log("Fetching Partslist as an Effect")
+    fetchPartslist(props.kit_id)
+  },
+  [props.kit_id]) 
+  const fetchPartslist = async (kit_id: number) => {
+    let parts:Part[] = []
+    try {
+      for(let page=1, pages=1; page<=pages; page++) {
+        console.log("Fetching parts page " + page)
+        let response = await axios.get('/api/ft-partslist/' + kit_id, {
+          params: {
+            page: page
+          }
+        })
+        if (response.data.status === "OK") {
+          if (page == 1) { pages = response.data.cPages }
+          let results = response.data.results.map((part: FtTicket) => ({
+            id: part.ticket_id,
+            part_no: part.ft_article_nos,
+            variant_id: part.ft_variant_uuid,
+            name: part.title,
+            count: part.ft_count,
+            category: part.ft_cat_all,
+            category_name: part.ft_cat_all_formatted,
+            image: '/thumbnail/' + part.ft_icon
+          }))
+          parts = parts.concat(results)
+        }
+      }
+    } catch(error) {
+      console.log(error)
+    }
+    setParts(parts)
+  }
+  return (
+    <div>
+      <h2>{props.kit_id}</h2>
+
+      <ul>
+        {parts.map((part:{id: number, part_no: string, name: string, image: string, count: number}) =>
+          <li key={part.id}>
+            <PartListItem id={part.id}  part_no={part.part_no} name={part.name} image={part.image} count={part.count} />
+          </li>)}
+      </ul>
+    </div>
+  )
+}
+
+function PartListItem(props: {id: number, part_no: string, name: string, image: string, count: number}) {
+  return (
+    <span>
+      <img src={props.image} />
+      {props.part_no}
+      {props.name}
+      {props.count}
+    </span>
+  )
+}
+
+function KitSelector(props: { action: React.Dispatch<React.SetStateAction<Kit | null>> }) {
+  const [kits, setKits] = useState([])
+  const [searchString, setSearchString] = useState("")
+  const action = (kit: Kit) => (_e:any, _d:any) => props.action(kit)
+  const searchKit = async (searchString: string) => {
+    try {
+      const response = await axios.get('/api/tickets', {
+        params: {
+          drill_ft_cat_all: 653,
+          fulltext: searchString
+        }
+      })
+      if (response.data.status === "OK") {
+        let results = response.data.results.map((kit: FtTicket) => ({
+          id: kit.ticket_id,
+          part_no: kit.ft_article_nos,
+          name: kit.title,
+          image: '/thumbnail/' + kit.ft_icon,
+          uri: '/api/ft-partslist/' + kit.ticket_id
+        }))
+        setKits(results)
+      }
+    } catch(error) {
+      console.log(error)
+    }
+  }
+  const handleSearch = () => {
+    searchKit(searchString)
+  }
+  const handleChange = (_e:any, data: {value: string}) => {setSearchString(data.value)}
+  return (
+    <div>
+      <Form onSubmit={handleSearch}>
+        <Form.Input icon="search" placeholder="Kit Name or Product Number" onChange={handleChange} />
+      </Form>
+      <ul>
+        {kits.map((kit:{id: number, part_no: string, name: string, image: string, uri: string}) =>
+          <li key={kit.id}>
+            <KitListItem id={kit.id} action={action(kit)} part_no={kit.part_no} name={kit.name} image={kit.image} uri={kit.uri} />
+          </li>)}
+      </ul>
+    </div>
+  )
+}
+
+function KitListItem(props:{id: number, action:any, part_no: string, name: string, image: string, uri:string}) {
+  return (
+    <span>
+      <img src={props.image} />
+      {props.part_no}
+      {props.name}
+      <Button onClick={props.action} content="Select" size="mini" color="green" />
+    </span>
+  )
+}
+
+function SystemSelector() {
+  return (
+    <div>fischertechnik</div>
+  )
+}
+function NavButton(props:{name: string}) {
+  return (
+    <button>{props.name}</button>
+  )
+}
+
+
+function Summary(props:{summary: InventorySummary}) {
+  let ft: SystemSummary = props.summary['fischertechnik']
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>System</th>
+          <th>Pieces</th>
+          <th>Kits</th>
+          <th>Models</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>fischertechnik</td>
+          <td>{ft.pieces_total}</td>
+          <td>{ft.kits_total}</td>
+          <td>0</td>
+        </tr>
+      </tbody>
+    </table>
+
+  )
 }
 
 export default App;
