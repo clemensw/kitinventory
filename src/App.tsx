@@ -38,11 +38,11 @@ type Part = {
 }
 
 type FtTicket = {
-  ticket_id: number,
+  ticket_id: string,
   ft_article_nos: string,
   ft_variant_uuid: string,
   title: string,
-  ft_count: number,
+  ft_count: string,
   ft_cat_all: string,
   ft_cat_all_formatted: string,
   ft_icon: string
@@ -61,6 +61,7 @@ class App extends Component {
     }
   }
   render() {
+    let srcNum:number = 1
     return (
       <div className="App">
         <Summary summary={this.state.summary} />
@@ -151,12 +152,12 @@ function PartsSelector(props: { kit_id: number }) {
         if (response.data.status === "OK") {
           if (page == 1) { pages = response.data.cPages }
           let results = response.data.results.map((part: FtTicket) => ({
-            id: part.ticket_id,
+            id: parseInt(part.ticket_id),
             partNo: part.ft_article_nos,
             variantId: part.ft_variant_uuid,
             name: part.title,
-            expectedCount: part.ft_count,
-            count: part.ft_count,
+            expectedCount: parseInt(part.ft_count),
+            count: parseInt(part.ft_count),
             category: part.ft_cat_all,
             categoryName: part.ft_cat_all_formatted,
             image: '/thumbnail/' + part.ft_icon
@@ -195,7 +196,7 @@ function PartListItem(props: {id: number, partNo: string, name: string, image: s
       <img src={props.image} />
       {props.partNo}
       {props.name}
-      <PartCountAdjuster expectedCount={props.count} count={props.count} addAdjustment={(adjustBy: number, cause: string) => props.addAdjustment(props.id, adjustBy, cause)} />
+      <PartCountAdjuster expectedCount={props.expectedCount} count={props.count} addAdjustment={(adjustBy: number, cause: string) => props.addAdjustment(props.id, adjustBy, cause)} />
     </span>
   )
 }
@@ -209,11 +210,9 @@ function PartCountAdjuster(props: {expectedCount: number, count: number, addAdju
       setCount(count - 1)
     } else {console.log("reduceCount: count should not drop below 0: count: ${count}")}
   }
-  
   let increaseCount = () => {
     setCount(count + 1)
   }
-
   return (
     <div>
       <span>
