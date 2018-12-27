@@ -19,7 +19,7 @@ type InventorySummary = {
 
 type Kit = {
   id: number,
-  part_no: string,
+  partNo: string,
   name: string,
   image: string,
   uri: string
@@ -27,9 +27,10 @@ type Kit = {
 
 type Part = {
   id: number,
-  part_no: string,
+  partNo: string,
   variant_id: string,
   name: string,
+  expectedCount: number,
   count: number,
   category: string,
   category_name: string,
@@ -112,15 +113,15 @@ function AcquisitionForm(props: {kit: Kit | null}) {
           {key: "new", value:"new", text: "new"}, {key: "used", value: "used", text: "used"}]} />
       </Form.Group>
       <Form.Group>
-        <Form.Input label="Name of Kit" value={props.kit && props.kit.name} />
-        <Form.Input label="Part Number" value={props.kit && props.kit.part_no} />
+        <Form.Input label="Name of Kit" value={props.kit && props.kit.name || ""} />
+        <Form.Input label="Part Number" value={props.kit && props.kit.partNo || ""} />
         <Form.Input label="Proof of Purchase" placeholder="Code" />
         <Form.Button label="Add" content="Add Kit" active={false} disabled={true} />
       </Form.Group>
     </Form>
     </Grid.Column>
     <Grid.Column>
-      <img src={props.kit && props.kit.image || ""} /> {props.kit && props.kit.part_no} {props.kit && props.kit.name}
+      <img src={props.kit && props.kit.image || ""} /> {props.kit && props.kit.partNo} {props.kit && props.kit.name}
     </Grid.Column>
     </Grid>
   )
@@ -128,11 +129,15 @@ function AcquisitionForm(props: {kit: Kit | null}) {
 
 function PartsSelector(props: { kit_id: number }) {
   const [parts, setParts] = useState<Part[]>([])
+  const [adjustments, setAdjustments] = useState({})
   useEffect(() => {
     console.log("Fetching Partslist as an Effect")
     fetchPartslist(props.kit_id)
   },
-  [props.kit_id]) 
+  [props.kit_id])
+  const addAdjustment = (id: number, adjustedBy: number, cause: string) => {
+    setAdjustments({...adjustments, ...{[id]:{adjustment: adjustedBy, cause: cause}}})
+  }
   const fetchPartslist = async (kit_id: number) => {
     let parts:Part[] = []
     try {
@@ -147,12 +152,13 @@ function PartsSelector(props: { kit_id: number }) {
           if (page == 1) { pages = response.data.cPages }
           let results = response.data.results.map((part: FtTicket) => ({
             id: part.ticket_id,
-            part_no: part.ft_article_nos,
-            variant_id: part.ft_variant_uuid,
+            partNo: part.ft_article_nos,
+            variantId: part.ft_variant_uuid,
             name: part.title,
+            expectedCount: part.ft_count,
             count: part.ft_count,
             category: part.ft_cat_all,
-            category_name: part.ft_cat_all_formatted,
+            categoryName: part.ft_cat_all_formatted,
             image: '/thumbnail/' + part.ft_icon
           }))
           parts = parts.concat(results)
@@ -168,23 +174,62 @@ function PartsSelector(props: { kit_id: number }) {
       <h2>{props.kit_id}</h2>
 
       <ul>
-        {parts.map((part:{id: number, part_no: string, name: string, image: string, count: number}) =>
+        {parts.map((part:{id: number, partNo: string, name: string, image: string, expectedCount: number, count: number}) =>
           <li key={part.id}>
-            <PartListItem id={part.id}  part_no={part.part_no} name={part.name} image={part.image} count={part.count} />
+            <PartListItem id={part.id} 
+                          partNo={part.partNo}
+                          name={part.name}
+                          image={part.image}
+                          expectedCount={part.expectedCount}
+                          count={part.count}
+                          addAdjustment={addAdjustment} />
           </li>)}
       </ul>
     </div>
   )
 }
 
-function PartListItem(props: {id: number, part_no: string, name: string, image: string, count: number}) {
+function PartListItem(props: {id: number, partNo: string, name: string, image: string, expectedCount: number, count: number, addAdjustment: any}) {
   return (
     <span>
       <img src={props.image} />
-      {props.part_no}
+      {props.partNo}
       {props.name}
-      {props.count}
+      <PartCountAdjuster expectedCount={props.count} count={props.count} addAdjustment={(adjustBy: number, cause: string) => props.addAdjustment(props.id, adjustBy, cause)} />
     </span>
+  )
+}
+
+
+function PartCountAdjuster(props: {expectedCount: number, count: number, addAdjustment: any}) {
+  const [count, setCount] = useState(props.expectedCount)
+  //const adjust()
+  let reduceCount = () => {
+    if (count > 0) {
+      setCount(count - 1)
+    } else {console.log("reduceCount: count should not drop below 0: count: ${count}")}
+  }
+  
+  let increaseCount = () => {
+    setCount(count + 1)
+  }
+
+  return (
+    <div>
+      <span>
+        {count}
+      </span>
+      <span>
+        <div>
+          missing: {Math.max(0, props.expectedCount - count)}
+          <Button icon="minus" onClick={reduceCount} disabled={count <=  0} />
+        </div>
+        <div>
+          extra: {Math.max(0, count - props.expectedCount)}
+          <Button icon="plus" onClick={increaseCount} />
+        </div>
+      </span>
+    </div>
   )
 }
 
@@ -203,7 +248,7 @@ function KitSelector(props: { action: React.Dispatch<React.SetStateAction<Kit | 
       if (response.data.status === "OK") {
         let results = response.data.results.map((kit: FtTicket) => ({
           id: kit.ticket_id,
-          part_no: kit.ft_article_nos,
+          partNo: kit.ft_article_nos,
           name: kit.title,
           image: '/thumbnail/' + kit.ft_icon,
           uri: '/api/ft-partslist/' + kit.ticket_id
@@ -224,20 +269,20 @@ function KitSelector(props: { action: React.Dispatch<React.SetStateAction<Kit | 
         <Form.Input icon="search" placeholder="Kit Name or Product Number" onChange={handleChange} />
       </Form>
       <ul>
-        {kits.map((kit:{id: number, part_no: string, name: string, image: string, uri: string}) =>
+        {kits.map((kit:{id: number, partNo: string, name: string, image: string, uri: string}) =>
           <li key={kit.id}>
-            <KitListItem id={kit.id} action={action(kit)} part_no={kit.part_no} name={kit.name} image={kit.image} uri={kit.uri} />
+            <KitListItem id={kit.id} action={action(kit)} partNo={kit.partNo} name={kit.name} image={kit.image} uri={kit.uri} />
           </li>)}
       </ul>
     </div>
   )
 }
 
-function KitListItem(props:{id: number, action:any, part_no: string, name: string, image: string, uri:string}) {
+function KitListItem(props:{id: number, action:any, partNo: string, name: string, image: string, uri:string}) {
   return (
     <span>
       <img src={props.image} />
-      {props.part_no}
+      {props.partNo}
       {props.name}
       <Button onClick={props.action} content="Select" size="mini" color="green" />
     </span>
