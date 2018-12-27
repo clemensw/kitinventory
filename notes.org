@@ -11,6 +11,7 @@ Content Security Policy: The page’s settings blocked the loading of a resource
 Profi Pneumatic 3 ist nur 4. Ergebnis
 ** db komplett?
 533874 Profi Pneumatic Power ist nur als Anleitung vorhanden
+Dynamic M ist nur als M+ Kombikit mit Motor enthalten
 ** Color is only in the title
 *** Any chance to get color as attribute?
 *** Any chance to resolve variant uuid?
