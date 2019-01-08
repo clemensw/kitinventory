@@ -14,7 +14,7 @@ type SystemSummary = {
 }
 
 type InventorySummary = {
-  [system_name: string]: SystemSummary
+  [system_name: string]: SystemSummary  
 }
 
 type Kit = {
@@ -37,6 +37,14 @@ type Part = {
   image: string
 }
 
+type Event = {
+  id: number,
+  date: Date,
+  eventType: string,
+  kits: Kit[],
+  parts: Part[]
+}
+
 type FtTicket = {
   ticket_id: string,
   ft_article_nos: string,
@@ -50,7 +58,7 @@ type FtTicket = {
 }
 
 
-class App extends Component {
+/* class App extends Component {
   state = {
     summary: {
       fischertechnik: {
@@ -61,7 +69,6 @@ class App extends Component {
     }
   }
   render() {
-    let srcNum:number = 1
     return (
       <div className="App">
         <Summary summary={this.state.summary} />
@@ -81,6 +88,36 @@ class App extends Component {
     );
   }
 }
+ */
+function App() {
+  const [summary, setSummary] = useState({
+    fischertechnik: {
+      pieces_total: 0,
+      piece_types: 0,
+      kits_total: 0,
+    }
+  })
+  const [events, setEvents] = useState<Event[]>([])
+  return (
+      <div className="App">
+        <Summary summary={summary} />
+        <ul>
+          <li>
+            <NavButton name="add" />
+          </li>
+          <li>
+            <NavButton name="inventory" />
+          </li>
+          <li>
+            <NavButton name="Remove"></NavButton>
+          </li>
+        </ul>
+        <AddForm />
+      </div>
+    )
+}
+
+
 
 function AddForm() {
   const [selectedKit, setSelectedKit] = useState<Kit | null>(null)
@@ -117,7 +154,7 @@ function AcquisitionForm(props: {kit: Kit | null}) {
         <Form.Input label="Name of Kit" value={props.kit && props.kit.name || ""} />
         <Form.Input label="Part Number" value={props.kit && props.kit.partNo || ""} />
         <Form.Input label="Proof of Purchase" placeholder="Code" />
-        <Form.Button label="Add" content="Add Kit" active={false} disabled={true} />
+        <Form.Button label="Add" content="Add Kit" active={props.kit != null} disabled={props.kit == null} />
       </Form.Group>
     </Form>
     </Grid.Column>
@@ -210,23 +247,29 @@ function PartCountAdjuster(props: {expectedCount: number, count: number, addAdju
       setCount(count - 1)
     } else {console.log("reduceCount: count should not drop below 0: count: ${count}")}
   }
+  
   let increaseCount = () => {
     setCount(count + 1)
   }
+  let renderDelta = () => {
+    let result = count - props.expectedCount
+    if (result == 0) {
+      return ""
+    }
+    else if (result < 0) {
+      return `(${-1 * result} missing)`
+    }
+    else return `(${result} extra)`
+  }
+  
   return (
     <div>
       <span>
-        {count}
+        <Button size="mini" icon="minus" onClick={reduceCount} disabled={count <=  0} />
+        <Button size="mini" icon="plus" onClick={increaseCount} />
       </span>
       <span>
-        <div>
-          missing: {Math.max(0, props.expectedCount - count)}
-          <Button icon="minus" onClick={reduceCount} disabled={count <=  0} />
-        </div>
-        <div>
-          extra: {Math.max(0, count - props.expectedCount)}
-          <Button icon="plus" onClick={increaseCount} />
-        </div>
+        {count} {renderDelta()}
       </span>
     </div>
   )
