@@ -5,6 +5,7 @@ import { string, number } from 'prop-types'
 import axios from 'axios'
 import { Form, Input, Button, Grid } from 'semantic-ui-react'
 import 'semantic-ui-css/semantic.min.css'
+import { ReadStream } from 'tty';
 
 
 type SystemSummary = {
@@ -41,8 +42,9 @@ type Event = {
   id: number,
   date: Date,
   eventType: string,
+  metaData: object
   kits: Kit[],
-  parts: Part[]
+  parts: Map<string, Part>
 }
 
 type FtTicket = {
@@ -57,38 +59,6 @@ type FtTicket = {
   
 }
 
-
-/* class App extends Component {
-  state = {
-    summary: {
-      fischertechnik: {
-        pieces_total: 0,
-        piece_types: 0,
-        kits_total: 0,
-      }
-    }
-  }
-  render() {
-    return (
-      <div className="App">
-        <Summary summary={this.state.summary} />
-        <ul>
-          <li>
-            <NavButton name="add" />
-          </li>
-          <li>
-            <NavButton name="inventory" />
-          </li>
-          <li>
-            <NavButton name="Remove"></NavButton>
-          </li>
-        </ul>
-        <AddForm />
-      </div>
-    );
-  }
-}
- */
 function App() {
   const [summary, setSummary] = useState({
     fischertechnik: {
@@ -98,6 +68,18 @@ function App() {
     }
   })
   const [events, setEvents] = useState<Event[]>([])
+  const acquireKit = (metaData: object, kits:Kit[], parts: Map<string, Part>) => {
+    let now = new Date()
+    let acquireEvent: Event = {
+      id: now.getTime(),
+      date: now,
+      eventType: "acquisition",
+      metaData,
+      kits,
+      parts
+    }
+    setEvents(events.concat(acquireEvent))
+  }
   return (
       <div className="App">
         <Summary summary={summary} />
@@ -112,18 +94,19 @@ function App() {
             <NavButton name="Remove"></NavButton>
           </li>
         </ul>
-        <AddForm />
+        <AddForm action={acquireKit} />
       </div>
     )
 }
 
 
 
-function AddForm() {
+function AddForm(props: {action: (metaData: object, kits: Kit[], parts: Map<string, Part>) => void}) {
   const [selectedKit, setSelectedKit] = useState<Kit | null>(null)
+  const [parts, setParts] = useState<Map<string, Part>>(new Map<string, Part>())
   let activity
   if (selectedKit) {
-    activity = <PartsSelector kit_id={selectedKit.id} />
+    activity = <PartsSelector kit_id={selectedKit.id} parts={parts} setParts={setParts} />
   } else {
     activity = <KitSelector action={setSelectedKit} />
   }
@@ -165,19 +148,22 @@ function AcquisitionForm(props: {kit: Kit | null}) {
   )
 }
 
-function PartsSelector(props: { kit_id: number }) {
-  const [parts, setParts] = useState<Part[]>([])
-  const [adjustments, setAdjustments] = useState({})
+function PartsSelector(props: { kit_id: number, parts: Map<string, Part>, setParts: React.Dispatch<React.SetStateAction<Map<string, Part>>>}) {
+//  const [parts, setParts] = useState<Part[]>([])
+//  const [adjustments, setAdjustments] = useState({})
   useEffect(() => {
     console.log("Fetching Partslist as an Effect")
     fetchPartslist(props.kit_id)
   },
   [props.kit_id])
-  const addAdjustment = (id: number, adjustedBy: number, cause: string) => {
+  let parts = props.parts
+  let setParts = props.setParts
+/*   const addAdjustment = (id: number, adjustedBy: number, cause: string) => {
     setAdjustments({...adjustments, ...{[id]:{adjustment: adjustedBy, cause: cause}}})
   }
+ */
   const fetchPartslist = async (kit_id: number) => {
-    let parts:Part[] = []
+    let parts = new Map<string, Part>()
     try {
       for(let page=1, pages=1; page<=pages; page++) {
         console.log("Fetching parts page " + page)
@@ -188,7 +174,7 @@ function PartsSelector(props: { kit_id: number }) {
         })
         if (response.data.status === "OK") {
           if (page == 1) { pages = response.data.cPages }
-          let results = response.data.results.map((part: FtTicket) => ({
+          let results: Part[] = response.data.results.map((part: FtTicket) => ({
             id: parseInt(part.ticket_id),
             partNo: part.ft_article_nos,
             variantId: part.ft_variant_uuid,
@@ -199,7 +185,8 @@ function PartsSelector(props: { kit_id: number }) {
             categoryName: part.ft_cat_all_formatted,
             image: '/thumbnail/' + part.ft_icon
           }))
-          parts = parts.concat(results)
+          parts = Object.assign(new Map<string, Part>(), parts, results.map(item => ({[item.id]: item})))
+          console.log(parts)
         }
       }
     } catch(error) {
@@ -212,7 +199,7 @@ function PartsSelector(props: { kit_id: number }) {
       <h2>{props.kit_id}</h2>
 
       <ul>
-        {parts.map((part:{id: number, partNo: string, name: string, image: string, expectedCount: number, count: number}) =>
+        {Array.from(parts.values()).map(part =>
           <li key={part.id}>
             <PartListItem id={part.id} 
                           partNo={part.partNo}
@@ -220,26 +207,26 @@ function PartsSelector(props: { kit_id: number }) {
                           image={part.image}
                           expectedCount={part.expectedCount}
                           count={part.count}
-                          addAdjustment={addAdjustment} />
+                           />
           </li>)}
       </ul>
     </div>
   )
 }
 
-function PartListItem(props: {id: number, partNo: string, name: string, image: string, expectedCount: number, count: number, addAdjustment: any}) {
+function PartListItem(props: {id: number, partNo: string, name: string, image: string, expectedCount: number, count: number}) {
   return (
     <span>
       <img src={props.image} />
       {props.partNo}
       {props.name}
-      <PartCountAdjuster expectedCount={props.expectedCount} count={props.count} addAdjustment={(adjustBy: number, cause: string) => props.addAdjustment(props.id, adjustBy, cause)} />
+      <PartCountAdjuster expectedCount={props.expectedCount} count={props.count} />
     </span>
   )
 }
 
 
-function PartCountAdjuster(props: {expectedCount: number, count: number, addAdjustment: any}) {
+function PartCountAdjuster(props: {expectedCount: number, count: number}) {
   const [count, setCount] = useState(props.expectedCount)
   //const adjust()
   let reduceCount = () => {
