@@ -29,12 +29,12 @@ type Kit = {
 type Part = {
   id: number,
   partNo: string,
-  variant_id: string,
+  variantId: string,
   name: string,
   expectedCount: number,
   count: number,
   category: string,
-  category_name: string,
+  categoryName: string,
   image: string
 }
 
@@ -44,7 +44,7 @@ type Event = {
   eventType: string,
   metaData: object
   kits: Kit[],
-  parts: Map<string, Part>
+  parts: Map<number, Part>
 }
 
 type FtTicket = {
@@ -68,7 +68,7 @@ function App() {
     }
   })
   const [events, setEvents] = useState<Event[]>([])
-  const acquireKit = (metaData: object, kits:Kit[], parts: Map<string, Part>) => {
+  const acquireKit = (metaData: object, kits:Kit[], parts: Map<number, Part>) => {
     let now = new Date()
     let acquireEvent: Event = {
       id: now.getTime(),
@@ -101,9 +101,9 @@ function App() {
 
 
 
-function AddForm(props: {action: (metaData: object, kits: Kit[], parts: Map<string, Part>) => void}) {
+function AddForm(props: {action: (metaData: object, kits: Kit[], parts: Map<number, Part>) => void}) {
   const [selectedKit, setSelectedKit] = useState<Kit | null>(null)
-  const [parts, setParts] = useState<Map<string, Part>>(new Map<string, Part>())
+  const [parts, setParts] = useState<Map<number, Part>>(new Map<number, Part>())
   let activity
   if (selectedKit) {
     activity = <PartsSelector kit_id={selectedKit.id} parts={parts} setParts={setParts} />
@@ -148,22 +148,22 @@ function AcquisitionForm(props: {kit: Kit | null}) {
   )
 }
 
-function PartsSelector(props: { kit_id: number, parts: Map<string, Part>, setParts: React.Dispatch<React.SetStateAction<Map<string, Part>>>}) {
+function PartsSelector(props: { kit_id: number, parts: Map<number, Part>, setParts: React.Dispatch<React.SetStateAction<Map<number, Part>>>}) {
 //  const [parts, setParts] = useState<Part[]>([])
 //  const [adjustments, setAdjustments] = useState({})
   useEffect(() => {
     console.log("Fetching Partslist as an Effect")
     fetchPartslist(props.kit_id)
-  },
-  [props.kit_id])
+  }, [props.kit_id])
   let parts = props.parts
   let setParts = props.setParts
+  let updatePart = (part: Part) => setParts(parts.set(part.id, part))
 /*   const addAdjustment = (id: number, adjustedBy: number, cause: string) => {
     setAdjustments({...adjustments, ...{[id]:{adjustment: adjustedBy, cause: cause}}})
   }
  */
   const fetchPartslist = async (kit_id: number) => {
-    let parts = new Map<string, Part>()
+    let parts = new Map<number, Part>()
     try {
       for(let page=1, pages=1; page<=pages; page++) {
         console.log("Fetching parts page " + page)
@@ -174,19 +174,21 @@ function PartsSelector(props: { kit_id: number, parts: Map<string, Part>, setPar
         })
         if (response.data.status === "OK") {
           if (page == 1) { pages = response.data.cPages }
-          let results: Part[] = response.data.results.map((part: FtTicket) => ({
-            id: parseInt(part.ticket_id),
-            partNo: part.ft_article_nos,
-            variantId: part.ft_variant_uuid,
-            name: part.title,
-            expectedCount: parseInt(part.ft_count),
-            count: parseInt(part.ft_count),
-            category: part.ft_cat_all,
-            categoryName: part.ft_cat_all_formatted,
-            image: '/thumbnail/' + part.ft_icon
-          }))
-          parts = Object.assign(new Map<string, Part>(), parts, results.map(item => ({[item.id]: item})))
-          console.log(parts)
+          console.log(response.data.results)
+          for (var entry of response.data.results) {
+            let part: Part = {
+              id: parseInt(entry.ticket_id),
+              partNo: entry.ft_article_nos,
+              variantId: entry.ft_variant_uuid,
+              name: entry.title,
+              expectedCount: parseInt(entry.ft_count),
+              count: parseInt(entry.ft_count),
+              category: entry.ft_cat_all,
+              categoryName: entry.ft_cat_all_formatted,
+              image: '/thumbnail/' + entry.ft_icon
+            }
+            parts.set(part.id, part)
+          }
         }
       }
     } catch(error) {
@@ -201,12 +203,8 @@ function PartsSelector(props: { kit_id: number, parts: Map<string, Part>, setPar
       <ul>
         {Array.from(parts.values()).map(part =>
           <li key={part.id}>
-            <PartListItem id={part.id} 
-                          partNo={part.partNo}
-                          name={part.name}
-                          image={part.image}
-                          expectedCount={part.expectedCount}
-                          count={part.count}
+            <PartListItem part={part}
+                          updatePart={updatePart}
                            />
           </li>)}
       </ul>
@@ -214,32 +212,46 @@ function PartsSelector(props: { kit_id: number, parts: Map<string, Part>, setPar
   )
 }
 
-function PartListItem(props: {id: number, partNo: string, name: string, image: string, expectedCount: number, count: number}) {
+function PartListItem(props: {part: Part, updatePart: (part: Part) => void}) {
+  let part = props.part
+  let setCount = (count: number) => {
+    part.count = count
+    props.updatePart(part)
+  }
   return (
     <span>
-      <img src={props.image} />
-      {props.partNo}
-      {props.name}
-      <PartCountAdjuster expectedCount={props.expectedCount} count={props.count} />
+      <img src={part.image} />
+      {part.partNo}
+      {part.name}
+      <PartCountAdjuster expectedCount={part.expectedCount} count={part.count} setCount = {setCount} />
     </span>
   )
 }
 
 
-function PartCountAdjuster(props: {expectedCount: number, count: number}) {
-  const [count, setCount] = useState(props.expectedCount)
+function PartCountAdjuster(props: {expectedCount: number, count: number, setCount: (count: number) => void}) {
+  //const [count, setCount] = useState(props.expectedCount)
   //const adjust()
-  let reduceCount = () => {
+ /*  let reduceCount = () => {
     if (count > 0) {
       setCount(count - 1)
     } else {console.log("reduceCount: count should not drop below 0: count: ${count}")}
-  }
+  } */
   
-  let increaseCount = () => {
-    setCount(count + 1)
+
+  let decrementCount = () => {
+    if (props.count > 0) {
+      props.setCount(props.count - 1)
+    } else {console.log("reduceCount: count should not drop below 0: count: ${count}")}
   }
+
+  let incrementCount = () => props.setCount(props.count + 1)
+
+  /* let increaseCount = () => {
+    setCount(count + 1)
+  } */
   let renderDelta = () => {
-    let result = count - props.expectedCount
+    let result = props.count - props.expectedCount
     if (result == 0) {
       return ""
     }
@@ -252,11 +264,11 @@ function PartCountAdjuster(props: {expectedCount: number, count: number}) {
   return (
     <div>
       <span>
-        <Button size="mini" icon="minus" onClick={reduceCount} disabled={count <=  0} />
-        <Button size="mini" icon="plus" onClick={increaseCount} />
+        <Button size="mini" icon="minus" onClick={decrementCount} disabled={props.count <=  0} />
+        <Button size="mini" icon="plus" onClick={incrementCount} />
       </span>
       <span>
-        {count} {renderDelta()}
+        {props.count} {renderDelta()}
       </span>
     </div>
   )
