@@ -3,7 +3,7 @@ import logo from './logo.svg'
 import './App.css'
 import { string, number } from 'prop-types'
 import axios from 'axios'
-import { Form, Input, Button, Grid } from 'semantic-ui-react'
+import { Form, Input, Button, Grid, InputOnChangeData } from 'semantic-ui-react'
 import 'semantic-ui-css/semantic.min.css'
 import { ReadStream } from 'tty';
 
@@ -43,7 +43,7 @@ type Event = {
   date: Date,
   eventType: string,
   metaData: object
-  kits: Kit[],
+  kit: Kit,
   parts: Map<number, Part>
 }
 
@@ -68,14 +68,14 @@ function App() {
     }
   })
   const [events, setEvents] = useState<Event[]>([])
-  const acquireKit = (metaData: object, kits:Kit[], parts: Map<number, Part>) => {
+  const acquireKit = (metaData: object, kit:Kit, parts: Map<number, Part>) => {
     let now = new Date()
     let acquireEvent: Event = {
       id: now.getTime(),
       date: now,
       eventType: "acquisition",
       metaData,
-      kits,
+      kit,
       parts
     }
     setEvents(events.concat(acquireEvent))
@@ -83,6 +83,7 @@ function App() {
   return (
       <div className="App">
         <Summary summary={summary} />
+        Events: {events.length}
         <ul>
           <li>
             <NavButton name="add" />
@@ -101,9 +102,10 @@ function App() {
 
 
 
-function AddForm(props: {action: (metaData: object, kits: Kit[], parts: Map<number, Part>) => void}) {
+function AddForm(props: {action: (metaData: object, kit: Kit, parts: Map<number, Part>) => void}) {
   const [selectedKit, setSelectedKit] = useState<Kit | null>(null)
   const [parts, setParts] = useState<Map<number, Part>>(new Map<number, Part>())
+  const registerAcquisistion = (metaData: object) => {if (selectedKit) {return props.action(metaData, selectedKit, parts)}}
   let activity
   if (selectedKit) {
     activity = <PartsSelector kit_id={selectedKit.id} parts={parts} setParts={setParts} />
@@ -113,21 +115,33 @@ function AddForm(props: {action: (metaData: object, kits: Kit[], parts: Map<numb
   return (
     <div>
       <SystemSelector />
-      <AcquisitionForm kit={selectedKit} />
+      <AcquisitionForm kit={selectedKit} registerAcquisition={registerAcquisistion} />
       {activity}
     </div>
   )
 }
 
-function AcquisitionForm(props: {kit: Kit | null}) {
+function AcquisitionForm(props: {kit: Kit | null, registerAcquisition: (metadata: object) => void}) {
+  const [metadata, setMetadata] = useState({date: "", source: "", type: ""})
+  const updateMetadata = (m: object) => setMetadata(Object.assign({}, metadata, m))
+  const handleChange = (_e:any, {name, value}: InputOnChangeData) => {
+    console.log(`Updating metadata ${name}: ${value}`)
+    setMetadata(Object.assign({}, metadata, {[name]: value}))
+    console.log(metadata)
+  }
+
+  const submitAction = (event: any, data:object) => {
+    console.log(metadata)
+    props.registerAcquisition(metadata)
+  }
   return (
     <Grid stackable columns={2} >
     <Grid.Column>
-    <Form action="Submit">
+    <Form onSubmit={submitAction}>
       <Form.Group>
-        <Form.Input label="Acquired on" placeholder="Date" />
-        <Form.Input label="Acquired from" placeholder="Name" />
-        <Form.Select label="Type of Acquisition" placeholder="purchase?" options={[
+        <Form.Input label="Acquired on" placeholder="Date" name= "date" value={metadata.date} onChange={handleChange} />
+        <Form.Input label="Acquired from" placeholder="Name" name="source" value={metadata.source} onChange={handleChange} />
+        <Form.Select label="Type of Acquisition" placeholder="purchase?" name="type" value={metadata.type}  options={[
           {key: "purchase", value: "purchase", text:"purchase"},
           {key:"gift", value:"gift", text: "gift"}]} />
         <Form.Select label="Condition" placeholder="Condition" options={[
@@ -137,7 +151,10 @@ function AcquisitionForm(props: {kit: Kit | null}) {
         <Form.Input label="Name of Kit" value={props.kit && props.kit.name || ""} />
         <Form.Input label="Part Number" value={props.kit && props.kit.partNo || ""} />
         <Form.Input label="Proof of Purchase" placeholder="Code" />
-        <Form.Button label="Add" content="Add Kit" active={props.kit != null} disabled={props.kit == null} />
+        <Form.Button label="Add"
+                     content="Add Kit"
+                     active={props.kit != null}
+                     disabled={props.kit == null} />
       </Form.Group>
     </Form>
     </Grid.Column>
@@ -149,8 +166,6 @@ function AcquisitionForm(props: {kit: Kit | null}) {
 }
 
 function PartsSelector(props: { kit_id: number, parts: Map<number, Part>, setParts: React.Dispatch<React.SetStateAction<Map<number, Part>>>}) {
-//  const [parts, setParts] = useState<Part[]>([])
-//  const [adjustments, setAdjustments] = useState({})
   useEffect(() => {
     console.log("Fetching Partslist as an Effect")
     fetchPartslist(props.kit_id)
@@ -158,10 +173,6 @@ function PartsSelector(props: { kit_id: number, parts: Map<number, Part>, setPar
   let parts = props.parts
   let setParts = props.setParts
   let updatePart = (part: Part) => setParts(parts.set(part.id, part))
-/*   const addAdjustment = (id: number, adjustedBy: number, cause: string) => {
-    setAdjustments({...adjustments, ...{[id]:{adjustment: adjustedBy, cause: cause}}})
-  }
- */
   const fetchPartslist = async (kit_id: number) => {
     let parts = new Map<number, Part>()
     try {
@@ -230,26 +241,12 @@ function PartListItem(props: {part: Part, updatePart: (part: Part) => void}) {
 
 
 function PartCountAdjuster(props: {expectedCount: number, count: number, setCount: (count: number) => void}) {
-  //const [count, setCount] = useState(props.expectedCount)
-  //const adjust()
- /*  let reduceCount = () => {
-    if (count > 0) {
-      setCount(count - 1)
-    } else {console.log("reduceCount: count should not drop below 0: count: ${count}")}
-  } */
-  
-
   let decrementCount = () => {
     if (props.count > 0) {
       props.setCount(props.count - 1)
     } else {console.log("reduceCount: count should not drop below 0: count: ${count}")}
   }
-
   let incrementCount = () => props.setCount(props.count + 1)
-
-  /* let increaseCount = () => {
-    setCount(count + 1)
-  } */
   let renderDelta = () => {
     let result = props.count - props.expectedCount
     if (result == 0) {
