@@ -72,6 +72,7 @@ type FtTicket = {
 
 
 function App() {
+  const [events, setEvents] = useState<Event[]>([])
   const [inventory, setInventory] = useState({
     fischertechnik: {
       summary: {
@@ -82,24 +83,39 @@ function App() {
       pieces: new Map<number, Part>()
     }
   })
-  const [events, setEvents] = useState<Event[]>([])
   useEffect(
     () => {
-      let nextSummary = events.reduce((prev: SystemSummary, event: Event) => {
+      let nextCollection = events.reduce((prev: Collection, event: Event) => {
         if (event.eventType === "acquisition") {
-          prev['kits']++
-          
+          prev.summary.kits++
+          let pieces = prev.pieces
+          for (const partNumber of event.parts.keys()) {
+            let eventPart = event.parts.get(partNumber) as Part
+            prev.summary.pieces += eventPart.count
+            if (pieces.has(partNumber)) {
+              let part = pieces.get(partNumber) as Part
+              part.count += eventPart.count
+              prev.pieces.set(partNumber, part) 
+            }
+            else {
+              prev.pieces.set(partNumber, event.parts.get(partNumber) as Part)
+            }
+          }
 
         }
         return prev
       },
       {
-        kits: 0,
-        pieces: 0,
-        pieceTypes: 0
+        summary: {
+          kits: 0,
+          pieces: 0,
+          pieceTypes: 0
+        },
+        pieces: new Map<number, Part>()
       }
       )
-      setInventory({fischertechnik: {summary: nextSummary, pieces: new Map<number, Part>()}})
+      nextCollection.summary.pieceTypes = nextCollection.pieces.size
+      setInventory({fischertechnik: nextCollection})
     },
     [events]
   )
@@ -379,7 +395,7 @@ function Summary(props:{summary: Inventory}) {
       <tbody>
         <tr>
           <td>fischertechnik</td>
-          <td>{ft.pieces}</td>
+          <td>{ft.pieces} ({ft.pieceTypes})</td>
           <td>{ft.kits}</td>
           <td>0</td>
         </tr>
