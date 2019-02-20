@@ -7,15 +7,25 @@ import { Form, Input, Button, Grid, InputOnChangeData } from 'semantic-ui-react'
 import 'semantic-ui-css/semantic.min.css'
 import { ReadStream } from 'tty';
 
+type PartMap = Map<number, Part>
 
 type SystemSummary = {
-  pieces_total: number,
-  piece_types: number,
-  kits_total: number,
+  pieces: number,
+  pieceTypes: number,
+  kits: number,
+}
+
+type Collection = {
+  summary: SystemSummary,
+  pieces: PartMap
 }
 
 type InventorySummary = {
-  [system_name: string]: SystemSummary  
+  [systemName: string]: SystemSummary  
+}
+
+type Inventory = {
+  [systemName: string]: Collection
 }
 
 type Kit = {
@@ -42,9 +52,10 @@ type Event = {
   id: number,
   date: Date,
   eventType: string,
-  metaData: object
+  system: string,
+  metaData: object,
   kit: Kit,
-  parts: Map<number, Part>
+  parts: PartMap
 }
 
 type FtTicket = {
@@ -59,21 +70,46 @@ type FtTicket = {
   
 }
 
+
 function App() {
-  const [summary, setSummary] = useState({
+  const [inventory, setInventory] = useState({
     fischertechnik: {
-      pieces_total: 0,
-      piece_types: 0,
-      kits_total: 0,
+      summary: {
+        pieces: 0,
+        pieceTypes: 0,
+        kits: 0,
+      },
+      pieces: new Map<number, Part>()
     }
   })
   const [events, setEvents] = useState<Event[]>([])
+  useEffect(
+    () => {
+      let nextSummary = events.reduce((prev: SystemSummary, event: Event) => {
+        if (event.eventType === "acquisition") {
+          prev['kits']++
+          
+
+        }
+        return prev
+      },
+      {
+        kits: 0,
+        pieces: 0,
+        pieceTypes: 0
+      }
+      )
+      setInventory({fischertechnik: {summary: nextSummary, pieces: new Map<number, Part>()}})
+    },
+    [events]
+  )
   const acquireKit = (metaData: object, kit:Kit, parts: Map<number, Part>) => {
     let now = new Date()
     let acquireEvent: Event = {
       id: now.getTime(),
       date: now,
       eventType: "acquisition",
+      system: "fischertechnik",
       metaData,
       kit,
       parts
@@ -82,19 +118,8 @@ function App() {
   }
   return (
       <div className="App">
-        <Summary summary={summary} />
+        <Summary summary={inventory} />
         Events: {events.length}
-        <ul>
-          <li>
-            <NavButton name="add" />
-          </li>
-          <li>
-            <NavButton name="inventory" />
-          </li>
-          <li>
-            <NavButton name="Remove"></NavButton>
-          </li>
-        </ul>
         <AddForm action={acquireKit} />
       </div>
     )
@@ -339,8 +364,8 @@ function NavButton(props:{name: string}) {
 }
 
 
-function Summary(props:{summary: InventorySummary}) {
-  let ft: SystemSummary = props.summary['fischertechnik']
+function Summary(props:{summary: Inventory}) {
+  let ft: SystemSummary = props.summary['fischertechnik']['summary']
   return (
     <table>
       <thead>
@@ -354,8 +379,8 @@ function Summary(props:{summary: InventorySummary}) {
       <tbody>
         <tr>
           <td>fischertechnik</td>
-          <td>{ft.pieces_total}</td>
-          <td>{ft.kits_total}</td>
+          <td>{ft.pieces}</td>
+          <td>{ft.kits}</td>
           <td>0</td>
         </tr>
       </tbody>
