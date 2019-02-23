@@ -1,4 +1,5 @@
 import React, { Component, useState, useEffect } from 'react'
+import createPersistedState from 'use-persisted-state'
 import logo from './logo.svg'
 import './App.css'
 import { string, number } from 'prop-types'
@@ -7,7 +8,9 @@ import { Form, Input, Button, Grid, InputOnChangeData } from 'semantic-ui-react'
 import 'semantic-ui-css/semantic.min.css'
 import { ReadStream } from 'tty';
 
-type PartMap = Map<number, Part>
+type PartMap = {
+  [partId: string]: Part
+}
 
 type SystemSummary = {
   pieces: number,
@@ -72,7 +75,8 @@ type FtTicket = {
 
 
 function App() {
-  const [events, setEvents] = useState<Event[]>([])
+  const useEventsState = createPersistedState('events')
+  const [events, setEvents] = useEventsState<Event[]>([])
   const [inventory, setInventory] = useState({
     fischertechnik: {
       summary: {
@@ -80,7 +84,7 @@ function App() {
         pieceTypes: 0,
         kits: 0,
       },
-      pieces: new Map<number, Part>()
+      pieces: {}
     }
   })
   useEffect(
@@ -89,16 +93,16 @@ function App() {
         if (event.eventType === "acquisition") {
           prev.summary.kits++
           let pieces = prev.pieces
-          for (const partNumber of event.parts.keys()) {
-            let eventPart = event.parts.get(partNumber) as Part
+          for (const [partId, eventPart]  of Object.entries(event.parts)) {
             prev.summary.pieces += eventPart.count
-            if (pieces.has(partNumber)) {
-              let part = pieces.get(partNumber) as Part
+            if (partId in pieces) {
+              let part = pieces[partId]
               part.count += eventPart.count
-              prev.pieces.set(partNumber, part) 
+              part.expectedCount += eventPart.expectedCount
+              prev.pieces[partId] = part
             }
             else {
-              prev.pieces.set(partNumber, event.parts.get(partNumber) as Part)
+              prev.pieces[partId] = event.parts[partId]
             }
           }
 
@@ -111,15 +115,15 @@ function App() {
           pieces: 0,
           pieceTypes: 0
         },
-        pieces: new Map<number, Part>()
+        pieces: {}
       }
       )
-      nextCollection.summary.pieceTypes = nextCollection.pieces.size
+      nextCollection.summary.pieceTypes = Object.keys(nextCollection.pieces).length
       setInventory({fischertechnik: nextCollection})
     },
     [events]
   )
-  const acquireKit = (metaData: object, kit:Kit, parts: Map<number, Part>) => {
+  const acquireKit = (metaData: object, kit:Kit, parts: PartMap) => {
     let now = new Date()
     let acquireEvent: Event = {
       id: now.getTime(),
@@ -136,16 +140,29 @@ function App() {
       <div className="App">
         <Summary summary={inventory} />
         Events: {events.length}
+        <Collection collection={inventory.fischertechnik} />
         <AddForm action={acquireKit} />
       </div>
     )
 }
 
+function Collection(props: {collection: Collection}) {
+  const pieces = props.collection.pieces
+  return (
+    <div>
+       {Array.from(Object.values(pieces).map(part =>
+          <li key={part.id}>
+            <PartListItem part={part}
+                          updatePart={(part: Part) => {}}
+                           />
+          </li>))}
+    </div>
+  )
+}
 
-
-function AddForm(props: {action: (metaData: object, kit: Kit, parts: Map<number, Part>) => void}) {
+function AddForm(props: {action: (metaData: object, kit: Kit, parts: PartMap) => void}) {
   const [selectedKit, setSelectedKit] = useState<Kit | null>(null)
-  const [parts, setParts] = useState<Map<number, Part>>(new Map<number, Part>())
+  const [parts, setParts] = useState<PartMap>({})
   const registerAcquisistion = (metaData: object) => {if (selectedKit) {return props.action(metaData, selectedKit, parts)}}
   let activity
   if (selectedKit) {
@@ -206,16 +223,19 @@ function AcquisitionForm(props: {kit: Kit | null, registerAcquisition: (metadata
   )
 }
 
-function PartsSelector(props: { kit_id: number, parts: Map<number, Part>, setParts: React.Dispatch<React.SetStateAction<Map<number, Part>>>}) {
+function PartsSelector(props: { kit_id: number, parts: PartMap, setParts: React.Dispatch<React.SetStateAction<PartMap>>}) {
   useEffect(() => {
     console.log("Fetching Partslist as an Effect")
     fetchPartslist(props.kit_id)
   }, [props.kit_id])
   let parts = props.parts
   let setParts = props.setParts
-  let updatePart = (part: Part) => setParts(parts.set(part.id, part))
+  let updatePart = (part: Part) => {
+    parts[part.id] = part
+    setParts(parts)
+  }
   const fetchPartslist = async (kit_id: number) => {
-    let parts = new Map<number, Part>()
+    let parts: PartMap = {}
     try {
       for(let page=1, pages=1; page<=pages; page++) {
         console.log("Fetching parts page " + page)
@@ -239,7 +259,7 @@ function PartsSelector(props: { kit_id: number, parts: Map<number, Part>, setPar
               categoryName: entry.ft_cat_all_formatted,
               image: '/thumbnail/' + entry.ft_icon
             }
-            parts.set(part.id, part)
+            parts[part.id] = part
           }
         }
       }
@@ -253,12 +273,12 @@ function PartsSelector(props: { kit_id: number, parts: Map<number, Part>, setPar
       <h2>{props.kit_id}</h2>
 
       <ul>
-        {Array.from(parts.values()).map(part =>
+        {Array.from(Object.values(parts).map(part =>
           <li key={part.id}>
             <PartListItem part={part}
                           updatePart={updatePart}
                            />
-          </li>)}
+          </li>))}
       </ul>
     </div>
   )
@@ -388,16 +408,16 @@ function Summary(props:{summary: Inventory}) {
         <tr>
           <th>System</th>
           <th>Pieces</th>
+          <th>Unique</th>
           <th>Kits</th>
-          <th>Models</th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td>fischertechnik</td>
-          <td>{ft.pieces} ({ft.pieceTypes})</td>
+          <td>{ft.pieces} </td>
+          <td>{ft.pieceTypes}</td>
           <td>{ft.kits}</td>
-          <td>0</td>
         </tr>
       </tbody>
     </table>
